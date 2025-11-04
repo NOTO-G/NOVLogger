@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ÑØV Logger</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Chart.js for the "Wave of Difficulty" graph -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        /* Custom CSS for a dark, minimalist, mobile-first theme */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d0d0d;
+            color: #d1d5db; /* Light gray text */
+            -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+        }
+        /* Custom styling for the slider track/thumb */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #252525;
+            border-radius: 4px;
+            margin: 10px 0;
+            cursor: pointer;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 24px;
+            width: 24px;
+            border-radius: 50%;
+            background: #ef4444; /* Red accent for the thumb */
+            cursor: pointer;
+            margin-top: -8px; /* Correctly center the thumb */
+        }
+        /* Style the 'corrupted' stage text to ensure the unicode displays correctly */
+        .corrupted-text {
+            font-size: 1.25rem; /* text-xl */
+            font-weight: 700; /* font-bold */
+            line-height: 1.5;
+            color: #ef4444;
+            display: block; /* Ensure it takes full width for centering */
+        }
+
+        /* Container for the app to ensure max width on desktop but full width on mobile */
+        #app-container {
+            max-width: 500px;
+            min-height: 100vh;
+            margin: 0 auto;
+            padding-bottom: 80px; /* Space for the fixed navigation */
+        }
+    </style>
+</head>
+<body class="selection:bg-red-700 selection:text-white">
+
+    <div id="app-container" class="shadow-2xl">
+        <!-- FIXED HEADER (Progress and Stage) -->
+        <header class="fixed top-0 left-0 right-0 z-10 p-4 border-b border-neutral-800 bg-neutral-900 shadow-lg" style="max-width: 500px; margin: 0 auto;">
+            <div class="flex justify-between items-center text-center">
+                <div class="text-left">
+                    <div id="current-stage-display" class="corrupted-text text-xl font-bold text-red-500"></div>
+                </div>
+                <div class="flex-shrink-0 text-right">
+                    <div id="progress-percent" class="text-3xl font-extrabold text-red-500">0%</div>
+                    <div class="text-xs text-neutral-400">Completion</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- MAIN CONTENT AREA -->
+        <main id="content" class="p-4 pt-24">
+            <!-- Content will be injected here: Log, Graph, or Calendar -->
+        </main>
+
+        <!-- FIXED FOOTER (Navigation) -->
+        <footer class="fixed bottom-0 left-0 right-0 z-20 bg-neutral-900 border-t border-neutral-800 shadow-2xl" style="max-width: 500px; margin: 0 auto;">
+            <div class="flex justify-around p-3">
+                <button onclick="showView('log')" id="nav-log" class="p-2 text-red-500 rounded-lg transition-colors hover:bg-neutral-800 flex flex-col items-center text-xs">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-square-pen"><path d="M12 20h9"/><path d="M16.5 3.5l-4 4L14 9.5l4-4 2-2z"/><path d="M15 5l4 4"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg>
+                    <span>Log</span>
+                </button>
+                <button onclick="showView('graph')" id="nav-graph" class="p-2 text-neutral-400 rounded-lg transition-colors hover:bg-neutral-800 flex flex-col items-center text-xs">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trending-up"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                    <span>Wave</span>
+                </button>
+                <button onclick="showView('calendar')" id="nav-calendar" class="p-2 text-neutral-400 rounded-lg transition-colors hover:bg-neutral-800 flex flex-col items-center text-xs">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                    <span>Calendar</span>
+                </button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Modals for messages -->
+    <div id="modal-container" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 p-4">
+        <div class="bg-neutral-800 p-6 rounded-xl shadow-2xl w-full max-w-sm">
+            <h3 id="modal-title" class="text-xl font-bold mb-3 text-white"></h3>
+            <p id="modal-message" class="text-neutral-300 mb-4"></p>
+            <button onclick="hideModal()" class="w-full bg-red-600 text-white py-2 rounded-lg font-semibold hover:bg-red-700 transition duration-150">Got It</button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const STORAGE_KEY = 'nov_logger_logs';
+        const START_MONTH = 10; // November is month 10 (0-indexed)
+        const START_DAY = 1;
+        const END_DAY = 30; // NNN lasts 30 days
+        const STAGE_DEFINITIONS = [
+            { endDay: 6, name: "STAGE 1" },
+            { endDay: 12, name: "S̵T̵A̶G̸E̴ ̷2̴" },
+            { endDay: 18, name: "S̶̩̓T̸̪͝A̸̟͋G̵̳̚E̶̜͌ ̶̩͐3̴̼͐" },
+            { endDay: 24, name: "S̷̤̓T̶͖̄͝A̶̧͈̅̐G̷̮̝̅E̵̲͚̔ ̶̡͍̌̋4̷̧͉̆̕" },
+            { endDay: 29, name: "Ş̵̳̫̀́̿T̴̨̘̖̈͌A̴̢̖̥̓̀͝G̷͉̹̗͑͂͊Ȇ̸̼͑͆ ̷̪̄̊5̷̨̱̒̐͝" },
+            { endDay: 31, name: "Ś̸̢̟̊̚͜ͅT̸̪͉̪̔̈ͅA̴̬̝̞̾́G̷̘̲̣͋̉̇E̴̪͗ ̷̟̣͉̫̊̍͗͠6̷͎̻̠̔" } // Includes Nov 30 (end day 30) and Dec 1 (end day 31)
+        ];
+        
+        let currentView = 'log';
+        let chartInstance = null;
+
+        // --- UTILITIES ---
+
+        /**
+         * Formats a Date object as YYYY-MM-DD.
+         * @param {Date} date 
+         * @returns {string} 
+         */
+        const formatDate = (date) => {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        };
+
+        /**
+         * Shows a custom modal message.
+         * @param {string} title 
+         * @param {string} message 
+         */
+        const showModal = (title, message) => {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-message').innerText = message;
+            document.getElementById('modal-container').classList.remove('hidden');
+        };
+
+        /**
+         * Hides the custom modal.
+         */
+        const hideModal = () => {
+            document.getElementById('modal-container').classList.add('hidden');
+        };
+
+        // --- DATA MANAGEMENT (LOCAL STORAGE) ---
+
+        /**
+         * Retrieves the log data from local storage.
+         * @returns {Array} An array of log objects.
+         */
+        const loadLogs = () => {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                return data ? JSON.parse(data) : [];
+            } catch (error) {
+                console.error("Error loading logs:", error);
+                return [];
+            }
+        };
+
+        /**
+         * Saves the current log array to local storage.
+         * @param {Array} logs 
+         */
+        const saveLogs = (logs) => {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+            } catch (error) {
+                console.error("Error saving logs:", error);
+                showModal("Storage Error", "Could not save log data to your device's local storage.");
+            }
+        };
+
+        /**
+         * Calculates the overall progress and current stage.
+         * @param {Array} logs - The current log entries.
+         */
+        const updateHeader = (logs) => {
+            const today = new Date();
+            const todayDay = today.getDate();
+
+            // 1. Calculate Percentage
+            const uniqueLoggedDays = new Set(logs.map(log => new Date(log.date).getDate()));
+            const daysComplete = Array.from(uniqueLoggedDays).filter(d => d <= END_DAY).length;
+            const progress = Math.min(100, Math.floor((todayDay / END_DAY) * 100)); // Base progress on current day of November
+            
+            document.getElementById('progress-percent').innerText = `${progress}%`;
+
+            // 2. Determine Current Stage
+            let currentStageName = STAGE_DEFINITIONS[0].name; // Default to Stage 1
+            for (const stage of STAGE_DEFINITIONS) {
+                if (todayDay <= stage.endDay) {
+                    currentStageName = stage.name;
+                    break;
+                }
+            }
+
+            // If it's December 1st, show Stage 6 complete.
+            if (today.getMonth() === 11 && todayDay === 1) {
+                 currentStageName = STAGE_DEFINITIONS[5].name;
+                 document.getElementById('progress-percent').innerText = `100%`;
+            }
+
+            document.getElementById('current-stage-display').innerHTML = currentStageName;
+        };
+        
+        // --- VIEW RENDERING ---
+
+        /**
+         * Renders the Daily Log Input form.
+         */
+        const renderLogView = () => {
+            const today = new Date();
+            // Restrict logging to November
+            const todayDateString = formatDate(today);
+            const isNovember = today.getMonth() === START_MONTH;
+            const isWithinChallenge = today.getDate() >= START_DAY && today.getDate() <= END_DAY && isNovember;
+
+            let logFormHTML;
+            if (!isNovember) {
+                 logFormHTML = `
+                    <div class="p-6 bg-neutral-800 rounded-xl shadow-lg text-center mt-4">
+                        <h2 class="text-2xl font-bold text-red-400 mb-2">Challenge Status</h2>
+                        <p class="text-neutral-300">${today.getMonth() < START_MONTH ? 'The challenge has not started yet.' : 'The main NNN challenge concluded on November 30th.'}</p>
+                        <p class="text-sm text-neutral-400 mt-2">Current Date: ${todayDateString}</p>
+                    </div>
+                `;
+            } else if (!isWithinChallenge) {
+                 logFormHTML = `
+                    <div class="p-6 bg-neutral-800 rounded-xl shadow-lg text-center mt-4">
+                        <h2 class="text-2xl font-bold text-red-400 mb-2">Challenge Complete!</h2>
+                        <p class="text-neutral-300">Log submissions are no longer accepted for NNN.</p>
+                        <p class="text-sm text-neutral-400 mt-2">Current Date: ${todayDateString}</p>
+                    </div>
+                `;
+            } else {
+                // Find existing log for today
+                const logs = loadLogs();
+                const todayLog = logs.find(log => log.date === todayDateString);
+                
+                let difficultyValue = todayLog ? todayLog.difficulty : 5;
+                let reflectionValue = todayLog ? todayLog.reflection_note : '';
+                let buttonText = todayLog ? 'UPDATE LOG' : 'LOG TODAY\'S WAVE';
+                
+                logFormHTML = `
+                    <div class="p-4 sm:p-6 bg-neutral-800 rounded-xl shadow-lg">
+                        <h2 class="text-xl font-bold text-white mb-6">Daily Log for ${todayDateString}</h2>
+
+                        <div class="mb-8">
+                            <label for="difficulty-rating" class="block text-sm font-medium mb-2 text-neutral-300">
+                                🌊 Difficulty Rating (1-10)
+                            </label>
+                            <div class="text-center mb-4">
+                                <h1 id="current-difficulty" class="text-6xl font-extrabold text-red-500 transition-colors duration-200">${difficultyValue}</h1>
+                            </div>
+                            <input 
+                                type="range" 
+                                id="difficulty-rating" 
+                                min="1" 
+                                max="10" 
+                                value="${difficultyValue}" 
+                                oninput="document.getElementById('current-difficulty').innerText = this.value"
+                                class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-neutral-700"
+                            />
+                            <div class="flex justify-between text-xs text-neutral-400 mt-1">
+                                <span>1 (Easy/Smooth)</span>
+                                <span>10 (Brutal/Wave Crash)</span>
+                            </div>
+                        </div>
+
+                        <div class="mb-8">
+                            <label for="daily-reflection" class="block text-sm font-medium mb-2 text-neutral-300">
+                                📚 Quick Log / Textbook Submitted
+                            </label>
+                            <textarea 
+                                id="daily-reflection" 
+                                placeholder="What was your main focus or challenge today? Be quick!" 
+                                rows="4"
+                                class="w-full p-3 bg-neutral-700 border border-neutral-600 rounded-lg text-neutral-200 placeholder-neutral-500 focus:ring-red-500 focus:border-red-500"
+                            >${reflectionValue}</textarea>
+                        </div>
+
+                        <button id="submit-log" onclick="handleLogSubmission('${todayDateString}')" class="w-full bg-red-600 text-white py-3 rounded-lg font-bold text-lg shadow-red-500/50 hover:bg-red-700 transition duration-150 transform hover:scale-[1.01] active:scale-95">
+                            ${buttonText}
+                        </button>
+                    </div>
+                `;
+            }
+
+            document.getElementById('content').innerHTML = logFormHTML;
+        };
+
+        /**
+         * Renders the "Wave of Difficulty" graph view.
+         */
+        const renderGraphView = () => {
+            const logs = loadLogs().filter(log => log.difficulty); // Filter out entries without difficulty
+            logs.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            const dates = logs.map(log => log.date.substring(5)); // M-D format
+            const difficulties = logs.map(log => log.difficulty);
+
+            const graphHTML = `
+                <div class="p-4 bg-neutral-800 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold text-white mb-4">Difficulty Wave Graph</h2>
+                    <div class="relative h-64 sm:h-80">
+                        <canvas id="difficultyChart"></canvas>
+                    </div>
+                    <p class="text-xs text-neutral-400 mt-4 text-center">
+                        This chart visualizes your daily difficulty (1-10) over the challenge period.
+                    </p>
+                </div>
+            `;
+            document.getElementById('content').innerHTML = graphHTML;
+
+            // Destroy previous chart instance if it exists
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            const ctx = document.getElementById('difficultyChart').getContext('2d');
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Daily Difficulty',
+                        data: difficulties,
+                        borderColor: '#ef4444', // Tailwind red-500
+                        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                        tension: 0.4, // Smooth the wave line
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointBackgroundColor: '#ef4444',
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 10,
+                            ticks: {
+                                color: '#d1d5db',
+                                stepSize: 1
+                            },
+                            grid: {
+                                color: '#252525'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Difficulty (1-10)',
+                                color: '#d1d5db'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#d1d5db',
+                            },
+                            grid: {
+                                color: '#252525'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ` Difficulty: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        };
+
+        /**
+         * Renders the Calendar View with difficulty visualization.
+         */
+        const renderCalendarView = () => {
+            const logs = loadLogs();
+            const logsMap = new Map(logs.map(log => [new Date(log.date).getDate(), log]));
+            const today = new Date();
+            const todayDay = today.getDate();
+            const currentMonth = today.getMonth();
+
+            if (currentMonth !== START_MONTH) {
+                document.getElementById('content').innerHTML = `
+                    <div class="p-6 bg-neutral-800 rounded-xl shadow-lg text-center mt-4">
+                        <h2 class="text-2xl font-bold text-red-400 mb-2">Calendar Unavailable</h2>
+                        <p class="text-neutral-300">The calendar is only available during the November challenge period.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const getDifficultyColor = (difficulty) => {
+                if (!difficulty) return 'bg-neutral-800'; // No log
+                const hue = 120 - (difficulty * 12); // Green (120) to Red (0) range in HSL
+                return `hsl(${hue}, 70%, 50%)`;
+            };
+
+            let calendarDaysHTML = '';
+            for (let day = START_DAY; day <= END_DAY; day++) {
+                const dayLog = logsMap.get(day);
+                const difficulty = dayLog ? dayLog.difficulty : null;
+                const date = new Date(today.getFullYear(), START_MONTH, day);
+                const dateString = formatDate(date);
+
+                const isLogged = !!dayLog;
+                const isPast = day < todayDay;
+                const isToday = day === todayDay;
+
+                let colorClass = getDifficultyColor(difficulty);
+                let ringClass = isToday ? 'ring-4 ring-red-500' : (isLogged ? '' : 'border border-dashed border-neutral-700');
+                let textColor = isLogged ? 'text-white' : 'text-neutral-500';
+
+                calendarDaysHTML += `
+                    <div onclick="showDayDetails('${dateString}', ${difficulty || 'null'}, '${(dayLog ? dayLog.reflection_note : 'No log recorded.')}')" 
+                         class="aspect-square flex flex-col justify-center items-center rounded-lg p-1 transition-transform transform hover:scale-[1.03] active:scale-95 ${colorClass} ${ringClass} cursor-pointer shadow-lg"
+                         title="${dateString} - Difficulty: ${difficulty || 'N/A'}">
+                        <div class="text-lg font-bold ${textColor}">${day}</div>
+                        <div class="text-xs ${textColor}">${difficulty || '-'}</div>
+                        ${isLogged ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check text-white/70 mt-1"><path d="M20 6 9 17l-5-5"/></svg>' : ''}
+                    </div>
+                `;
+            }
+
+            const calendarHTML = `
+                <div class="p-4 bg-neutral-800 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold text-white mb-6 text-center">November Calendar Wave</h2>
+                    <div class="grid grid-cols-7 gap-2 text-center text-sm font-semibold mb-3 text-neutral-400">
+                        <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                    </div>
+                    <!-- Empty spacers for days before November 1st (assuming Nov 1 is a Friday) -->
+                    <!-- In a real app, you'd calculate the day of the week for Nov 1. For simplicity, we'll start the grid on day 1. -->
+                    <div class="grid grid-cols-6 gap-3">
+                        ${calendarDaysHTML}
+                    </div>
+                    <p class="text-xs text-neutral-400 mt-6 text-center">
+                        Color intensity shows difficulty (Green=1/Easy, Red=10/Brutal). Tap a day for details.
+                    </p>
+                </div>
+            `;
+            document.getElementById('content').innerHTML = calendarHTML;
+        };
+
+        /**
+         * Shows day details from the calendar view.
+         */
+        const showDayDetails = (date, difficulty, note) => {
+             const d = new Date(date);
+             const readableDate = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+             
+             let content = `
+                <p class="text-lg font-bold mb-3">${readableDate}</p>
+                <p class="mb-3">Difficulty: <span class="text-xl font-extrabold text-red-400">${difficulty !== 'null' ? difficulty : 'N/A'}</span></p>
+                <p class="text-neutral-300 italic">${note}</p>
+             `;
+
+             // Check if it's the current day to allow editing
+             if (formatDate(new Date()) === date) {
+                 content += `<p class="mt-4 text-red-300">This is today! Navigate to the 'Log' tab to edit this entry.</p>`;
+             }
+             
+             showModal(`Log Summary`, content);
+        };
+
+
+        // --- EVENT HANDLERS ---
+
+        /**
+         * Handles the submission of a new or updated log entry.
+         */
+        const handleLogSubmission = (dateString) => {
+            const difficultyInput = document.getElementById('difficulty-rating');
+            const reflectionInput = document.getElementById('daily-reflection');
+
+            const difficulty = parseInt(difficultyInput.value, 10);
+            const reflection_note = reflectionInput.value.trim();
+
+            if (!reflection_note) {
+                showModal("Missing Data", "Please enter your quick log/reflection before saving.");
+                return;
+            }
+
+            const logs = loadLogs();
+            const newLog = {
+                date: dateString,
+                difficulty: difficulty,
+                reflection_note: reflection_note,
+                timestamp: Date.now()
+            };
+
+            // Check if log for this date already exists
+            const existingIndex = logs.findIndex(log => log.date === dateString);
+
+            if (existingIndex > -1) {
+                logs[existingIndex] = newLog; // Update existing log
+                showModal("Log Updated", `Your entry for ${dateString} has been successfully updated.`);
+            } else {
+                logs.push(newLog); // Add new log
+                showModal("Log Saved", `Your difficulty of ${difficulty} has been logged for today!`);
+            }
+
+            // Save and refresh UI
+            saveLogs(logs);
+            updateHeader(logs);
+            renderLogView(); // Re-render the log view to show "UPDATE" button
+        };
+
+        /**
+         * Switches the displayed view and updates the navigation buttons.
+         * @param {string} view - 'log', 'graph', or 'calendar'
+         */
+        const showView = (view) => {
+            currentView = view;
+            const contentElement = document.getElementById('content');
+            
+            // 1. Update navigation active state
+            document.querySelectorAll('footer button').forEach(button => {
+                button.classList.remove('text-red-500');
+                button.classList.add('text-neutral-400');
+            });
+            document.getElementById(`nav-${view}`).classList.remove('text-neutral-400');
+            document.getElementById(`nav-${view}`).classList.add('text-red-500');
+
+            // 2. Render the new content
+            contentElement.classList.add('opacity-0', 'transition-opacity', 'duration-300'); // Start transition
+            setTimeout(() => {
+                if (view === 'log') {
+                    renderLogView();
+                } else if (view === 'graph') {
+                    renderGraphView();
+                } else if (view === 'calendar') {
+                    renderCalendarView();
+                }
+                contentElement.classList.remove('opacity-0'); // End transition
+            }, 50); // Small delay to reset opacity
+        };
+        
+        // --- INITIALIZATION ---
+        window.onload = () => {
+            // Check if the current month is November (10) to initialize data or show completion
+            const today = new Date();
+            if (today.getMonth() !== START_MONTH && !(today.getMonth() === 11 && today.getDate() === 1)) {
+                 // Initialize for a simulated November 4th for easy testing if not November
+                 // You can remove this for live production after November.
+                 // For now, we'll let it use the current date check in renderLogView.
+            }
+
+            // Initial load of data and header
+            const logs = loadLogs();
+            updateHeader(logs);
+
+            // Set initial view
+            showView('log'); 
+        };
+        
+        // Expose function globally for HTML inline events
+        window.handleLogSubmission = handleLogSubmission;
+        window.showView = showView;
+        window.hideModal = hideModal;
+        window.showDayDetails = showDayDetails;
+    </script>
+</body>
+</html>
