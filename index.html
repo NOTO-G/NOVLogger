@@ -107,7 +107,8 @@
     <div id="modal-container" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 p-4">
         <div class="bg-neutral-800 p-6 rounded-xl shadow-2xl w-full max-w-sm">
             <h3 id="modal-title" class="text-xl font-bold mb-3 text-white"></h3>
-            <p id="modal-message" class="text-neutral-300 mb-4"></p>
+            <!-- Changed p tag contents to be empty since it will be populated dynamically -->
+            <p id="modal-message" class="text-neutral-300 mb-4"></p> 
             <button onclick="hideModal()" class="w-full bg-red-600 text-white py-2 rounded-lg font-semibold hover:bg-red-700 transition duration-150">Got It</button>
         </div>
     </div>
@@ -129,6 +130,8 @@
         
         let currentView = 'log';
         let chartInstance = null;
+        // New: Tracks the date the user wants to edit (from calendar)
+        let targetEditDate = null; 
 
         // --- UTILITIES ---
 
@@ -147,11 +150,12 @@
         /**
          * Shows a custom modal message.
          * @param {string} title 
-         * @param {string} message 
+         * @param {string} message - HTML string
          */
         const showModal = (title, message) => {
             document.getElementById('modal-title').innerText = title;
-            document.getElementById('modal-message').innerText = message;
+            // FIX: Use innerHTML to correctly render the HTML structure in the message
+            document.getElementById('modal-message').innerHTML = message; 
             document.getElementById('modal-container').classList.remove('hidden');
         };
 
@@ -231,18 +235,22 @@
          */
         const renderLogView = () => {
             const today = new Date();
-            // Restrict logging to November
             const todayDateString = formatDate(today);
-            const isNovember = today.getMonth() === START_MONTH;
-            const isWithinChallenge = today.getDate() >= START_DAY && today.getDate() <= END_DAY && isNovember;
+            
+            // Determine the active date string: targetEditDate if set, otherwise today's date
+            const activeDateString = targetEditDate || todayDateString;
+            const activeDate = new Date(activeDateString);
+            
+            const isNovember = activeDate.getMonth() === START_MONTH;
+            const isWithinChallenge = activeDate.getDate() >= START_DAY && activeDate.getDate() <= END_DAY && isNovember;
 
             let logFormHTML;
             if (!isNovember) {
                  logFormHTML = `
                     <div class="p-6 bg-neutral-800 rounded-xl shadow-lg text-center mt-4">
                         <h2 class="text-2xl font-bold text-red-400 mb-2">Challenge Status</h2>
-                        <p class="text-neutral-300">${today.getMonth() < START_MONTH ? 'The challenge has not started yet.' : 'The main NNN challenge concluded on November 30th.'}</p>
-                        <p class="text-sm text-neutral-400 mt-2">Current Date: ${todayDateString}</p>
+                        <p class="text-neutral-300">${activeDate.getMonth() < START_MONTH ? 'The challenge has not started yet.' : 'The main NNN challenge concluded on November 30th.'}</p>
+                        <p class="text-sm text-neutral-400 mt-2">Current Date: ${activeDateString}</p>
                     </div>
                 `;
             } else if (!isWithinChallenge) {
@@ -250,21 +258,24 @@
                     <div class="p-6 bg-neutral-800 rounded-xl shadow-lg text-center mt-4">
                         <h2 class="text-2xl font-bold text-red-400 mb-2">Challenge Complete!</h2>
                         <p class="text-neutral-300">Log submissions are no longer accepted for NNN.</p>
-                        <p class="text-sm text-neutral-400 mt-2">Current Date: ${todayDateString}</p>
+                        <p class="text-sm text-neutral-400 mt-2">Current Date: ${activeDateString}</p>
                     </div>
                 `;
             } else {
-                // Find existing log for today
+                // Find existing log for the active date
                 const logs = loadLogs();
-                const todayLog = logs.find(log => log.date === todayDateString);
+                const dayLog = logs.find(log => log.date === activeDateString);
                 
-                let difficultyValue = todayLog ? todayLog.difficulty : 5;
-                let reflectionValue = todayLog ? todayLog.reflection_note : '';
-                let buttonText = todayLog ? 'UPDATE LOG' : 'LOG TODAY\'S WAVE';
+                let difficultyValue = dayLog ? dayLog.difficulty : 5;
+                let reflectionValue = dayLog ? dayLog.reflection_note : '';
+                let buttonText = dayLog ? 'UPDATE LOG' : 'LOG DAY\'S WAVE';
+
+                // Determine if we are editing a past date (or today if targetEditDate is set)
+                const isEditingPast = activeDateString !== todayDateString;
                 
                 logFormHTML = `
                     <div class="p-4 sm:p-6 bg-neutral-800 rounded-xl shadow-lg">
-                        <h2 class="text-xl font-bold text-white mb-6">Daily Log for ${todayDateString}</h2>
+                        <h2 class="text-xl font-bold text-white mb-6">${isEditingPast ? 'Editing Log for' : 'Daily Log for'} ${activeDateString}</h2>
 
                         <div class="mb-8">
                             <label for="difficulty-rating" class="block text-sm font-medium mb-2 text-neutral-300">
@@ -280,7 +291,7 @@
                                 max="10" 
                                 value="${difficultyValue}" 
                                 oninput="document.getElementById('current-difficulty').innerText = this.value"
-                                class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-neutral-700"
+                                class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-neutral-600"
                             />
                             <div class="flex justify-between text-xs text-neutral-400 mt-1">
                                 <span>1 (Easy/Smooth)</span>
@@ -300,7 +311,7 @@
                             >${reflectionValue}</textarea>
                         </div>
 
-                        <button id="submit-log" onclick="handleLogSubmission('${todayDateString}')" class="w-full bg-red-600 text-white py-3 rounded-lg font-bold text-lg shadow-red-500/50 hover:bg-red-700 transition duration-150 transform hover:scale-[1.01] active:scale-95">
+                        <button id="submit-log" onclick="handleLogSubmission('${activeDateString}')" class="w-full bg-red-600 text-white py-3 rounded-lg font-bold text-lg shadow-red-500/50 hover:bg-red-700 transition duration-150 transform hover:scale-[1.01] active:scale-95">
                             ${buttonText}
                         </button>
                     </div>
@@ -314,6 +325,9 @@
          * Renders the "Wave of Difficulty" graph view.
          */
         const renderGraphView = () => {
+            // Ensure targetEditDate is cleared when moving away from the log form
+            targetEditDate = null; 
+
             const logs = loadLogs().filter(log => log.difficulty); // Filter out entries without difficulty
             logs.sort((a, b) => new Date(a.date) - new Date(b.date));
 
@@ -403,8 +417,12 @@
          * Renders the Calendar View with difficulty visualization.
          */
         const renderCalendarView = () => {
+            // Ensure targetEditDate is cleared when moving away from the log form
+            targetEditDate = null; 
+            
             const logs = loadLogs();
-            const logsMap = new Map(logs.map(log => [new Date(log.date).getDate(), log]));
+            // FIX: Use getUTCDate() instead of getDate() to prevent time zone issues from shifting the day key.
+            const logsMap = new Map(logs.map(log => [new Date(log.date).getUTCDate(), log]));
             const today = new Date();
             const todayDay = today.getDate();
             const currentMonth = today.getMonth();
@@ -421,8 +439,9 @@
 
             const getDifficultyColor = (difficulty) => {
                 if (!difficulty) return 'bg-neutral-800'; // No log
-                const hue = 120 - (difficulty * 12); // Green (120) to Red (0) range in HSL
-                return `hsl(${hue}, 70%, 50%)`;
+                const hue = 120 - (difficulty * 12); // Green (120) to Red (0)
+                // Increased saturation to 90% for a more notable, vibrant color change
+                return `hsl(${hue}, 90%, 50%)`; 
             };
 
             let calendarDaysHTML = '';
@@ -433,16 +452,19 @@
                 const dateString = formatDate(date);
 
                 const isLogged = !!dayLog;
-                const isPast = day < todayDay;
                 const isToday = day === todayDay;
 
                 let colorClass = getDifficultyColor(difficulty);
                 let ringClass = isToday ? 'ring-4 ring-red-500' : (isLogged ? '' : 'border border-dashed border-neutral-700');
                 let textColor = isLogged ? 'text-white' : 'text-neutral-500';
+                
+                // Pass 'No log recorded.' as the note if not logged
+                const noteContent = dayLog ? dayLog.reflection_note.replace(/'/g, "\\'") : 'No log recorded.';
 
                 calendarDaysHTML += `
-                    <div onclick="showDayDetails('${dateString}', ${difficulty || 'null'}, '${(dayLog ? dayLog.reflection_note : 'No log recorded.')}')" 
-                         class="aspect-square flex flex-col justify-center items-center rounded-lg p-1 transition-transform transform hover:scale-[1.03] active:scale-95 ${colorClass} ${ringClass} cursor-pointer shadow-lg"
+                    <div onclick="showDayDetails('${dateString}', ${difficulty || 'null'}, '${noteContent}')" 
+                         style="background-color: ${colorClass};"
+                         class="aspect-square flex flex-col justify-center items-center rounded-lg p-1 transition-transform transform hover:scale-[1.03] active:scale-95 ${ringClass} cursor-pointer shadow-lg"
                          title="${dateString} - Difficulty: ${difficulty || 'N/A'}">
                         <div class="text-lg font-bold ${textColor}">${day}</div>
                         <div class="text-xs ${textColor}">${difficulty || '-'}</div>
@@ -471,21 +493,46 @@
         };
 
         /**
+         * Switches to the log view for a specific day from the calendar.
+         */
+        const handleEditDay = (dateString) => {
+            targetEditDate = dateString;
+            hideModal();
+            showView('log');
+        };
+
+        /**
          * Shows day details from the calendar view.
          */
         const showDayDetails = (date, difficulty, note) => {
              const d = new Date(date);
+             const todayDateString = formatDate(new Date());
              const readableDate = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+             
+             // Check if the day is today or a past day (which can be edited/logged)
+             const isEditable = date <= todayDateString; 
+             
+             let difficultyDisplay = difficulty !== 'null' ? difficulty : 'N/A';
              
              let content = `
                 <p class="text-lg font-bold mb-3">${readableDate}</p>
-                <p class="mb-3">Difficulty: <span class="text-xl font-extrabold text-red-400">${difficulty !== 'null' ? difficulty : 'N/A'}</span></p>
-                <p class="text-neutral-300 italic">${note}</p>
+                <p class="mb-3">Difficulty: <span class="text-xl font-extrabold text-red-400">${difficultyDisplay}</span></p>
              `;
+             
+             // Use the correct styling based on whether a log exists
+             if (note === 'No log recorded.') {
+                 // Gray italic message when no log is recorded (as requested)
+                 content += `<p class="text-neutral-500 italic">${note}</p>`;
+             } else {
+                 // Standard text for actual log entries
+                 content += `<p class="text-neutral-300">${note}</p>`;
+             }
 
-             // Check if it's the current day to allow editing
-             if (formatDate(new Date()) === date) {
-                 content += `<p class="mt-4 text-red-300">This is today! Navigate to the 'Log' tab to edit this entry.</p>`;
+             if (isEditable) {
+                 // Button to switch to log view for this specific date
+                 content += `<button onclick="handleEditDay('${date}')" class="w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 transition duration-150 mt-4">Edit/Log Day</button>`;
+             } else {
+                 content += `<p class="mt-4 text-neutral-400 text-sm italic">This day is in the future and cannot be logged yet.</p>`;
              }
              
              showModal(`Log Summary`, content);
@@ -525,13 +572,27 @@
                 showModal("Log Updated", `Your entry for ${dateString} has been successfully updated.`);
             } else {
                 logs.push(newLog); // Add new log
-                showModal("Log Saved", `Your difficulty of ${difficulty} has been logged for today!`);
+                showModal("Log Saved", `Your difficulty of ${difficulty} has been logged for ${dateString}!`);
             }
 
             // Save and refresh UI
             saveLogs(logs);
             updateHeader(logs);
-            renderLogView(); // Re-render the log view to show "UPDATE" button
+            
+            // If the user was editing a past day, automatically switch them back to the calendar view 
+            // so they can see the color change immediately. Otherwise, stay on the log view.
+            const todayDateString = formatDate(new Date());
+            const wasEditingPastDate = dateString !== todayDateString;
+
+            // Clear the target edit date state
+            targetEditDate = null;
+            
+            if (wasEditingPastDate) {
+                 showView('calendar'); 
+            } else {
+                // If logging today's date, re-render the log view (which is the default action)
+                renderLogView(); 
+            }
         };
 
         /**
@@ -539,6 +600,14 @@
          * @param {string} view - 'log', 'graph', or 'calendar'
          */
         const showView = (view) => {
+            if (currentView === view) {
+                // If switching to log, re-render to ensure targetEditDate state is checked
+                if (view === 'log' && targetEditDate) {
+                    renderLogView(); 
+                }
+                return;
+            }
+            
             currentView = view;
             const contentElement = document.getElementById('content');
             
@@ -550,9 +619,11 @@
             document.getElementById(`nav-${view}`).classList.remove('text-neutral-400');
             document.getElementById(`nav-${view}`).classList.add('text-red-500');
 
-            // 2. Render the new content
-            contentElement.classList.add('opacity-0', 'transition-opacity', 'duration-300'); // Start transition
+            // 2. Render the new content - Enhanced Animation
+            contentElement.classList.add('opacity-0', 'transition-all', 'duration-300', 'translate-y-2'); 
+
             setTimeout(() => {
+                // Render the new content while it is still "hidden" by opacity-0
                 if (view === 'log') {
                     renderLogView();
                 } else if (view === 'graph') {
@@ -560,20 +631,17 @@
                 } else if (view === 'calendar') {
                     renderCalendarView();
                 }
-                contentElement.classList.remove('opacity-0'); // End transition
-            }, 50); // Small delay to reset opacity
+                
+                // Remove the hidden state to trigger the smooth fade-in and slide-up transition
+                setTimeout(() => {
+                    contentElement.classList.remove('opacity-0', 'translate-y-2');
+                }, 10); 
+
+            }, 50); 
         };
         
         // --- INITIALIZATION ---
         window.onload = () => {
-            // Check if the current month is November (10) to initialize data or show completion
-            const today = new Date();
-            if (today.getMonth() !== START_MONTH && !(today.getMonth() === 11 && today.getDate() === 1)) {
-                 // Initialize for a simulated November 4th for easy testing if not November
-                 // You can remove this for live production after November.
-                 // For now, we'll let it use the current date check in renderLogView.
-            }
-
             // Initial load of data and header
             const logs = loadLogs();
             updateHeader(logs);
@@ -587,6 +655,7 @@
         window.showView = showView;
         window.hideModal = hideModal;
         window.showDayDetails = showDayDetails;
+        window.handleEditDay = handleEditDay; // New function exposed
     </script>
 </body>
 </html>
