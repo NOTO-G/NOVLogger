@@ -31,7 +31,8 @@
             -webkit-appearance: none;
             width: 100%;
             height: 8px;
-            background: #252525;
+            /* FIX 2: Changed from #252525 (dark gray) to a lighter gray for visibility */
+            background: #a0a0a0; 
             border-radius: 4px;
             margin: 10px 0;
             cursor: pointer;
@@ -130,13 +131,13 @@
         
         let currentView = 'log';
         let chartInstance = null;
-        // New: Tracks the date the user wants to edit (from calendar)
         let targetEditDate = null; 
 
         // --- UTILITIES ---
 
         /**
          * Formats a Date object as YYYY-MM-DD.
+         * NOTE: This uses local date parts for formatting, which is fine for display.
          * @param {Date} date 
          * @returns {string} 
          */
@@ -146,6 +147,20 @@
             const d = String(date.getDate()).padStart(2, '0');
             return `${y}-${m}-${d}`;
         };
+        
+        /**
+         * FIX 3: Creates a Date object from YYYY-MM-DD string, interpreting it as UTC date.
+         * This prevents local time zone offsets from shifting the day/month when comparing.
+         * @param {string} isoString - YYYY-MM-DD
+         * @returns {Date} UTC-interpreted Date object
+         */
+        const dateFromISO = (isoString) => {
+            const parts = isoString.split('-');
+            // Date.UTC(year, monthIndex, day)
+            // Note: Date.UTC() returns a timestamp (number of milliseconds since epoch).
+            return new Date(Date.UTC(parts[0], parseInt(parts[1]) - 1, parts[2]));
+        };
+
 
         /**
          * Shows a custom modal message.
@@ -154,7 +169,6 @@
          */
         const showModal = (title, message) => {
             document.getElementById('modal-title').innerText = title;
-            // FIX: Use innerHTML to correctly render the HTML structure in the message
             document.getElementById('modal-message').innerHTML = message; 
             document.getElementById('modal-container').classList.remove('hidden');
         };
@@ -204,7 +218,7 @@
             const todayDay = today.getDate();
 
             // 1. Calculate Percentage
-            const uniqueLoggedDays = new Set(logs.map(log => new Date(log.date).getDate()));
+            const uniqueLoggedDays = new Set(logs.map(log => new Date(log.date).getUTCDate()));
             const daysComplete = Array.from(uniqueLoggedDays).filter(d => d <= END_DAY).length;
             const progress = Math.min(100, Math.floor((todayDay / END_DAY) * 100)); // Base progress on current day of November
             
@@ -239,17 +253,23 @@
             
             // Determine the active date string: targetEditDate if set, otherwise today's date
             const activeDateString = targetEditDate || todayDateString;
-            const activeDate = new Date(activeDateString);
             
-            const isNovember = activeDate.getMonth() === START_MONTH;
-            const isWithinChallenge = activeDate.getDate() >= START_DAY && activeDate.getDate() <= END_DAY && isNovember;
+            // FIX 3: Use dateFromISO for the active date to correctly calculate the month/day 
+            // regardless of the local time zone offset.
+            const activeDate = dateFromISO(activeDateString); 
+            
+            // Use UTC methods for comparison
+            const isNovember = activeDate.getUTCMonth() === START_MONTH;
+            const activeDay = activeDate.getUTCDate();
+            
+            const isWithinChallenge = activeDay >= START_DAY && activeDay <= END_DAY && isNovember;
 
             let logFormHTML;
             if (!isNovember) {
                  logFormHTML = `
                     <div class="p-6 bg-neutral-800 rounded-xl shadow-lg text-center mt-4">
                         <h2 class="text-2xl font-bold text-red-400 mb-2">Challenge Status</h2>
-                        <p class="text-neutral-300">${activeDate.getMonth() < START_MONTH ? 'The challenge has not started yet.' : 'The main NNN challenge concluded on November 30th.'}</p>
+                        <p class="text-neutral-300">${activeDate.getUTCMonth() < START_MONTH ? 'The challenge has not started yet.' : 'The main NNN challenge concluded on November 30th.'}</p>
                         <p class="text-sm text-neutral-400 mt-2">Current Date: ${activeDateString}</p>
                     </div>
                 `;
@@ -421,8 +441,8 @@
             targetEditDate = null; 
             
             const logs = loadLogs();
-            // FIX: Use getUTCDate() instead of getDate() to prevent time zone issues from shifting the day key.
-            const logsMap = new Map(logs.map(log => [new Date(log.date).getUTCDate(), log]));
+            // Use getUTCDate() for map key to ensure time zones don't shift the day
+            const logsMap = new Map(logs.map(log => [dateFromISO(log.date).getUTCDate(), log]));
             const today = new Date();
             const todayDay = today.getDate();
             const currentMonth = today.getMonth();
@@ -448,8 +468,15 @@
             for (let day = START_DAY; day <= END_DAY; day++) {
                 const dayLog = logsMap.get(day);
                 const difficulty = dayLog ? dayLog.difficulty : null;
-                const date = new Date(today.getFullYear(), START_MONTH, day);
-                const dateString = formatDate(date);
+                
+                // Use the UTC-interpreted date to create the dateString for comparison
+                const date = dateFromISO(`${today.getFullYear()}-${START_MONTH + 1}-${day}`);
+                const dateString = formatDate(new Date(date.getTime() + date.getTimezoneOffset() * 60000)); 
+                // Using dateFromISO then formatting back to local YYYY-MM-DD string is tricky. 
+                // Simpler: use the log's date string if it exists, otherwise construct it based on November year.
+                
+                // Construct the date string for the link action consistently as YYYY-MM-DD
+                const linkDateString = `${today.getFullYear()}-${String(START_MONTH + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
                 const isLogged = !!dayLog;
                 const isToday = day === todayDay;
@@ -462,10 +489,10 @@
                 const noteContent = dayLog ? dayLog.reflection_note.replace(/'/g, "\\'") : 'No log recorded.';
 
                 calendarDaysHTML += `
-                    <div onclick="showDayDetails('${dateString}', ${difficulty || 'null'}, '${noteContent}')" 
+                    <div onclick="showDayDetails('${linkDateString}', ${difficulty || 'null'}, '${noteContent}')" 
                          style="background-color: ${colorClass};"
                          class="aspect-square flex flex-col justify-center items-center rounded-lg p-1 transition-transform transform hover:scale-[1.03] active:scale-95 ${ringClass} cursor-pointer shadow-lg"
-                         title="${dateString} - Difficulty: ${difficulty || 'N/A'}">
+                         title="${linkDateString} - Difficulty: ${difficulty || 'N/A'}">
                         <div class="text-lg font-bold ${textColor}">${day}</div>
                         <div class="text-xs ${textColor}">${difficulty || '-'}</div>
                         ${isLogged ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check text-white/70 mt-1"><path d="M20 6 9 17l-5-5"/></svg>' : ''}
@@ -480,8 +507,9 @@
                         <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
                     </div>
                     <!-- Empty spacers for days before November 1st (assuming Nov 1 is a Friday) -->
-                    <!-- In a real app, you'd calculate the day of the week for Nov 1. For simplicity, we'll start the grid on day 1. -->
-                    <div class="grid grid-cols-6 gap-3">
+                    <!-- Note: The grid should ideally start on the correct day of the week for Nov 1. 
+                         For this 30-day grid, we'll keep it simple and just list 1-30. -->
+                    <div class="grid grid-cols-7 gap-3">
                         ${calendarDaysHTML}
                     </div>
                     <p class="text-xs text-neutral-400 mt-6 text-center">
@@ -505,9 +533,10 @@
          * Shows day details from the calendar view.
          */
         const showDayDetails = (date, difficulty, note) => {
-             const d = new Date(date);
+             // Use the dateFromISO helper to get the UTC-safe date object
+             const d = dateFromISO(date);
              const todayDateString = formatDate(new Date());
-             const readableDate = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+             const readableDate = d.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long', day: 'numeric', year: 'numeric' });
              
              // Check if the day is today or a past day (which can be edited/logged)
              const isEditable = date <= todayDateString; 
@@ -598,10 +627,10 @@
         /**
          * Switches the displayed view and updates the navigation buttons.
          * @param {string} view - 'log', 'graph', or 'calendar'
+         * @param {boolean} [initialLoad=false] - Skip transition effects on first load.
          */
-        const showView = (view) => {
-            if (currentView === view) {
-                // If switching to log, re-render to ensure targetEditDate state is checked
+        const showView = (view, initialLoad = false) => {
+            if (currentView === view && !initialLoad) {
                 if (view === 'log' && targetEditDate) {
                     renderLogView(); 
                 }
@@ -619,11 +648,27 @@
             document.getElementById(`nav-${view}`).classList.remove('text-neutral-400');
             document.getElementById(`nav-${view}`).classList.add('text-red-500');
 
-            // 2. Render the new content - Enhanced Animation
-            contentElement.classList.add('opacity-0', 'transition-all', 'duration-300', 'translate-y-2'); 
+            // 2. Render the new content
+            if (!initialLoad) {
+                // Apply transition effects for subsequent clicks
+                contentElement.classList.add('opacity-0', 'transition-all', 'duration-300', 'translate-y-2'); 
 
-            setTimeout(() => {
-                // Render the new content while it is still "hidden" by opacity-0
+                setTimeout(() => {
+                    if (view === 'log') {
+                        renderLogView();
+                    } else if (view === 'graph') {
+                        renderGraphView();
+                    } else if (view === 'calendar') {
+                        renderCalendarView();
+                    }
+                    
+                    setTimeout(() => {
+                        contentElement.classList.remove('opacity-0', 'translate-y-2');
+                    }, 10); 
+
+                }, 50); 
+            } else {
+                // Initial load: render immediately
                 if (view === 'log') {
                     renderLogView();
                 } else if (view === 'graph') {
@@ -631,13 +676,7 @@
                 } else if (view === 'calendar') {
                     renderCalendarView();
                 }
-                
-                // Remove the hidden state to trigger the smooth fade-in and slide-up transition
-                setTimeout(() => {
-                    contentElement.classList.remove('opacity-0', 'translate-y-2');
-                }, 10); 
-
-            }, 50); 
+            }
         };
         
         // --- INITIALIZATION ---
@@ -646,8 +685,11 @@
             const logs = loadLogs();
             updateHeader(logs);
 
-            // Set initial view
-            showView('log'); 
+            // FIX 1: Render the log view immediately, then call showView
+            // to set the active nav state without triggering the delayed animation.
+            renderLogView();
+            // Set initial view state for the navigation buttons
+            showView('log', true); 
         };
         
         // Expose function globally for HTML inline events
@@ -655,7 +697,7 @@
         window.showView = showView;
         window.hideModal = hideModal;
         window.showDayDetails = showDayDetails;
-        window.handleEditDay = handleEditDay; // New function exposed
+        window.handleEditDay = handleEditDay;
     </script>
 </body>
 </html>
